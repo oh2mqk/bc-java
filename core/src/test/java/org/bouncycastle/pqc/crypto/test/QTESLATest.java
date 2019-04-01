@@ -1,6 +1,15 @@
 package org.bouncycastle.pqc.crypto.test;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import junit.framework.TestCase;
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
@@ -18,6 +27,36 @@ public class QTESLATest
     extends TestCase
 {
     static SecureRandom secureRandom = new SecureRandom();
+
+    private static String asString(Map<String, String> values, String key)
+    {
+        if (values.containsKey(key))
+        {
+            return values.get(key);
+        }
+        return null;
+    }
+
+    private static Integer asInt(Map<String, String> values, String key, int def)
+        throws Exception
+    {
+        String value = asString(values, key);
+        if (value != null)
+        {
+            return Integer.parseInt(value);
+        }
+        return def;
+    }
+
+    private static byte[] asByteArray(Map<String, String> values, String key)
+    {
+        String value = asString(values, key);
+        if (value != null)
+        {
+            return Hex.decode(value);
+        }
+        return null;
+    }
 
     private void doTestSig(AsymmetricCipherKeyPair kp)
     {
@@ -89,7 +128,7 @@ public class QTESLATest
         kpGen.init(new QTESLAKeyGenerationParameters(QTESLASecurityCategory.PROVABLY_SECURE_III, secureRandom));
 
         AsymmetricCipherKeyPair kp = kpGen.generateKeyPair();
-        
+
         doTestSig(kp);
     }
 
@@ -100,7 +139,7 @@ public class QTESLATest
 
         QTESLASigner signer = new QTESLASigner();
 
-        signer.init(true, new ParametersWithRandom(qPriv, QTESLASecureRandomFactory.getFixed(seed,256)));
+        signer.init(true, new ParametersWithRandom(qPriv, QTESLASecureRandomFactory.getFixed(seed, 256)));
 
         byte[] sig = signer.generateSignature(msg);
 
@@ -204,4 +243,256 @@ public class QTESLATest
 
         doTestKAT(QTESLASecurityCategory.PROVABLY_SECURE_III, pk, sk, seed, msg, sm);
     }
+
+    public void testKATVectors()
+        throws Exception
+    {
+
+        String[] files = new String[]{
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT32/PQCsignKAT_qTesla-I.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT32/PQCsignKAT_qTesla-III-size.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT32/PQCsignKAT_qTesla-III-speed.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT32/PQCsignKAT_qTesla-p-I.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT32/PQCsignKAT_qTesla-p-III.rsp",
+
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT64/PQCsignKAT_qTesla-I.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT64/PQCsignKAT_qTesla-III-size.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT64/PQCsignKAT_qTesla-III-speed.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT64/PQCsignKAT_qTesla-p-I.rsp",
+            "/org/bouncycastle/crypto/test/qTesla/KAT/ref/KAT64/PQCsignKAT_qTesla-p-III.rsp"
+        };
+
+
+        for (String file : files)
+        {
+            List<QTeslaKatVector> vectors =
+                new QTeslaKatPArser(file, QTESLATest.class.getResourceAsStream(file))
+                    .parse("count");
+
+            assertEquals(100, vectors.size());
+
+            int type;
+
+            if (file.endsWith("qTesla-I.rsp"))
+            {
+                type = QTESLASecurityCategory.HEURISTIC_I;
+            }
+            else if (file.endsWith("qTesla-III-size.rsp"))
+            {
+                type = QTESLASecurityCategory.HEURISTIC_III_SIZE;
+            }
+            else if (file.endsWith("qTesla-III-speed.rsp"))
+            {
+                type = QTESLASecurityCategory.HEURISTIC_III_SPEED;
+            }
+            else if (file.endsWith("qTesla-p-I.rsp"))
+            {
+                type = QTESLASecurityCategory.PROVABLY_SECURE_I;
+            }
+            else if (file.endsWith("qTesla-p-III.rsp"))
+            {
+                type = QTESLASecurityCategory.PROVABLY_SECURE_III;
+            }
+            else
+            {
+                throw new Exception("unable to determine file type for. " + file);
+            }
+
+
+            for (QTeslaKatVector vector : vectors)
+            {
+                try
+                {
+                    doTestKAT(type, vector.pk, vector.sk, vector.seed, vector.msg, vector.sm);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception(file + " count =" + vector.count + " failed", ex);
+                }
+            }
+
+        }
+
+
+    }
+
+    public static class QTeslaKatVector
+    {
+
+        final int count;
+        final byte[] seed;
+        final int mlen;
+        final byte[] msg;
+        final byte[] pk;
+        final byte[] sk;
+        final int smlen;
+        final byte[] sm;
+
+
+        QTeslaKatVector(Map<String, String> parameters)
+            throws Exception
+        {
+            count = asInt(parameters, "count", -1);
+            seed = asByteArray(parameters, "seed");
+            mlen = asInt(parameters, "mlen", -1);
+            msg = asByteArray(parameters, "msg");
+            pk = asByteArray(parameters, "pk");
+            sk = asByteArray(parameters, "sk");
+            smlen = asInt(parameters, "smlen", -1);
+            sm = asByteArray(parameters, "sm");
+        }
+
+        @Override
+        public boolean equals(Object o)
+        {
+            if (this == o)
+            {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass())
+            {
+                return false;
+            }
+
+            QTeslaKatVector that = (QTeslaKatVector)o;
+
+//            if (count != that.count)
+//            {
+//                return false;
+//            }
+            if (mlen != that.mlen)
+            {
+                return false;
+            }
+            if (smlen != that.smlen)
+            {
+                return false;
+            }
+            if (!java.util.Arrays.equals(seed, that.seed))
+            {
+                return false;
+            }
+            if (!java.util.Arrays.equals(msg, that.msg))
+            {
+                return false;
+            }
+            if (!java.util.Arrays.equals(pk, that.pk))
+            {
+                return false;
+            }
+            if (!java.util.Arrays.equals(sk, that.sk))
+            {
+                return false;
+            }
+            return java.util.Arrays.equals(sm, that.sm);
+        }
+
+        @Override
+        public int hashCode()
+        {
+            int result;// = count;
+            result = java.util.Arrays.hashCode(seed);//   31 * result + java.util.Arrays.hashCode(seed);
+            result = 31 * result + mlen;
+            result = 31 * result + java.util.Arrays.hashCode(msg);
+            result = 31 * result + java.util.Arrays.hashCode(pk);
+            result = 31 * result + java.util.Arrays.hashCode(sk);
+            result = 31 * result + smlen;
+            result = 31 * result + java.util.Arrays.hashCode(sm);
+            return result;
+        }
+    }
+
+    public static class QTeslaKatPArser
+    {
+
+        private final InputStream src;
+        private final String srcLabel;
+
+        public QTeslaKatPArser(String label, InputStream src)
+        {
+            this.src = src;
+            this.srcLabel = label;
+        }
+
+
+        public List<QTeslaKatVector> parse(String blockDelimField)
+            throws Exception
+        {
+
+            List<QTeslaKatVector> vectors = new ArrayList<QTeslaKatVector>();
+            Map<String, String> extractedParameters = new HashMap<String, String>();
+            BufferedReader bin = new BufferedReader(new InputStreamReader(src));
+            Set<QTeslaKatVector> duplicateTrap = new HashSet<QTeslaKatVector>();
+
+
+            String line = null;
+
+            while ((line = bin.readLine()) != null)
+            {
+                line = line.trim();
+                if (line.length() == 0 || line.startsWith("#"))
+                {
+                    continue;
+                }
+
+
+                //
+                // Vector parameter.
+                //
+                if (line.contains("="))
+                {
+                    String[] kv = line.split("=");
+
+                    for (int t = 0; t < kv.length; t++)
+                    {
+                        kv[t] = kv[t].trim();
+                    }
+
+                    String key = null;
+                    String value = null;
+
+                    if (kv.length > 0)
+                    {
+                        if (!extractedParameters.isEmpty() && kv[0].equals(blockDelimField))
+                        {
+                            QTeslaKatVector vector = new QTeslaKatVector(extractedParameters);
+                            vectors.add(vector);
+
+                            if (duplicateTrap.contains(vector))
+                            {
+                                throw new Exception("Duplicate Vector encountered, set : " + vector.count + " in " + srcLabel);
+                            }
+
+                            duplicateTrap.add(vector);
+
+                            extractedParameters.clear();
+                        }
+
+                        if (kv.length > 1)
+                        {
+                            extractedParameters.put(kv[0], kv[1]);
+                        }
+                        else
+                        {
+                            extractedParameters.put(kv[0], null);
+                        }
+                    }
+                }
+
+            }
+
+            //
+            // Trailing block.
+            //
+            if (!extractedParameters.isEmpty())
+            {
+                vectors.add(new QTeslaKatVector(extractedParameters));
+            }
+
+
+            return vectors;
+        }
+
+    }
+
 }

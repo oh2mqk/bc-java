@@ -11,12 +11,15 @@ import java.net.UnknownHostException;
 import java.security.Principal;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
 
+import org.bouncycastle.jsse.BCApplicationProtocolSelector;
 import org.bouncycastle.jsse.BCExtendedSSLSession;
 import org.bouncycastle.jsse.BCSSLConnection;
 import org.bouncycastle.jsse.BCSSLParameters;
@@ -53,8 +56,6 @@ class ProvSSLSocketDirect
     ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData, boolean enableSessionCreation,
         boolean useClientMode, ProvSSLParameters sslParameters)
     {
-        super();
-
         this.context = context;
         this.contextData = contextData;
         this.enableSessionCreation = enableSessionCreation;
@@ -64,8 +65,6 @@ class ProvSSLSocketDirect
 
     protected ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData)
     {
-        super();
-
         this.context = context;
         this.contextData = contextData;
         this.sslParameters = context.getDefaultParameters(!useClientMode);
@@ -74,41 +73,43 @@ class ProvSSLSocketDirect
     protected ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData, InetAddress address, int port, InetAddress clientAddress, int clientPort)
         throws IOException
     {
-        super(address, port, clientAddress, clientPort);
-
         this.context = context;
         this.contextData = contextData;
         this.sslParameters = context.getDefaultParameters(!useClientMode);
+
+        implBind(clientAddress, clientPort);
+        implConnect(address, port);
     }
 
     protected ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData, InetAddress address, int port) throws IOException
     {
-        super(address, port);
-
         this.context = context;
         this.contextData = contextData;
         this.sslParameters = context.getDefaultParameters(!useClientMode);
+
+        implConnect(address, port);
     }
 
     protected ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData, String host, int port, InetAddress clientAddress, int clientPort)
         throws IOException, UnknownHostException
     {
-        super(host, port, clientAddress, clientPort);
-
         this.context = context;
         this.contextData = contextData;
         this.sslParameters = context.getDefaultParameters(!useClientMode);
         this.peerHost = host;
+
+        implBind(clientAddress, clientPort);
+        implConnect(host, port);
     }
 
     protected ProvSSLSocketDirect(ProvSSLContextSpi context, ContextData contextData, String host, int port) throws IOException, UnknownHostException
     {
-        super(host, port);
-
         this.context = context;
         this.contextData = contextData;
         this.sslParameters = context.getDefaultParameters(!useClientMode);
         this.peerHost = host;
+
+        implConnect(host, port);
     }
 
     public ProvSSLContextSpi getContext()
@@ -181,6 +182,17 @@ class ProvSSLSocketDirect
         notifyConnected();
     }
 
+    // An SSLSocket method from JDK 9, but also a BCSSLSocket method
+    public synchronized String getApplicationProtocol()
+    {
+        return null == connection ? null : connection.getApplicationProtocol();
+    }
+
+    public synchronized BCApplicationProtocolSelector<SSLSocket> getBCHandshakeApplicationProtocolSelector()
+    {
+        return sslParameters.getSocketAPSelector();
+    }
+
     public synchronized BCExtendedSSLSession getBCHandshakeSession()
     {
         return handshakeSession;
@@ -216,6 +228,12 @@ class ProvSSLSocketDirect
     public synchronized boolean getEnableSessionCreation()
     {
         return enableSessionCreation;
+    }
+
+    // An SSLSocket method from JDK 9, but also a BCSSLSocket method
+    public synchronized String getHandshakeApplicationProtocol()
+    {
+        return null == handshakeSession ? null : handshakeSession.getApplicationProtocol();
     }
 
     @Override
@@ -285,6 +303,11 @@ class ProvSSLSocketDirect
     public synchronized boolean getWantClientAuth()
     {
         return sslParameters.getWantClientAuth();
+    }
+
+    public synchronized void setBCHandshakeApplicationProtocolSelector(BCApplicationProtocolSelector<SSLSocket> selector)
+    {
+        sslParameters.setSocketAPSelector(selector);
     }
 
     @Override
@@ -426,6 +449,11 @@ class ProvSSLSocketDirect
     public synchronized void notifyHandshakeSession(ProvSSLSessionHandshake handshakeSession)
     {
         this.handshakeSession = handshakeSession;
+    }
+
+    public synchronized String selectApplicationProtocol(List<String> protocols)
+    {
+        return sslParameters.getSocketAPSelector().select(this, protocols);
     }
 
     synchronized void handshakeIfNecessary(boolean resumable) throws IOException

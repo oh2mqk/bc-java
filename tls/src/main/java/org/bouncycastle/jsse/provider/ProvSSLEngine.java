@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.security.Principal;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.List;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
@@ -14,6 +15,7 @@ import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 
+import org.bouncycastle.jsse.BCApplicationProtocolSelector;
 import org.bouncycastle.jsse.BCExtendedSSLSession;
 import org.bouncycastle.jsse.BCSSLConnection;
 import org.bouncycastle.jsse.BCSSLEngine;
@@ -189,12 +191,15 @@ class ProvSSLEngine
         }
     }
 
-    // @Override from JDK 9
-    public String getApplicationProtocol()
+    // An SSLEngine method from JDK 9, but also a BCSSLEngine method
+    public synchronized String getApplicationProtocol()
     {
-        BCSSLConnection connection = getConnection();
+        return null == connection ? null : connection.getApplicationProtocol();
+    }
 
-        return connection == null ? null : connection.getApplicationProtocol();
+    public synchronized BCApplicationProtocolSelector<SSLEngine> getBCHandshakeApplicationProtocolSelector()
+    {
+        return sslParameters.getEngineAPSelector();
     }
 
     public synchronized BCExtendedSSLSession getBCHandshakeSession()
@@ -229,6 +234,12 @@ class ProvSSLEngine
     public synchronized boolean getEnableSessionCreation()
     {
         return enableSessionCreation;
+    }
+
+    // An SSLEngine method from JDK 9, but also a BCSSLEngine method
+    public synchronized String getHandshakeApplicationProtocol()
+    {
+        return null == handshakeSession ? null : handshakeSession.getApplicationProtocol();
     }
 
     @Override
@@ -302,6 +313,11 @@ class ProvSSLEngine
     public synchronized boolean isOutboundDone()
     {
         return protocol != null && protocol.isClosed() && protocol.getAvailableOutputBytes() < 1;
+    }
+
+    public synchronized void setBCHandshakeApplicationProtocolSelector(BCApplicationProtocolSelector<SSLEngine> selector)
+    {
+        sslParameters.setEngineAPSelector(selector);
     }
 
     @Override
@@ -652,6 +668,11 @@ class ProvSSLEngine
     public synchronized void notifyHandshakeSession(ProvSSLSessionHandshake handshakeSession)
     {
         this.handshakeSession = handshakeSession;
+    }
+
+    public synchronized String selectApplicationProtocol(List<String> protocols)
+    {
+        return sslParameters.getEngineAPSelector().select(this, protocols);
     }
 
     private RecordPreview getRecordPreview(ByteBuffer src)
