@@ -9,7 +9,7 @@ import org.bouncycastle.tls.crypto.TlsDHConfig;
 import org.bouncycastle.tls.crypto.TlsECConfig;
 
 /**
- * Base class for a TLS client.
+ * Base class for a TLS server.
  */
 public abstract class AbstractTlsServer
     extends AbstractTlsPeer
@@ -479,27 +479,15 @@ public abstract class AbstractTlsServer
     public TlsDHConfig getDHConfig() throws IOException
     {
         int minimumFiniteFieldBits = TlsDHUtils.getMinimumFiniteFieldBits(selectedCipherSuite);
-
         int namedGroup = selectDH(minimumFiniteFieldBits);
-        if (namedGroup < 0)
-        {
-            throw new TlsFatalAlert(AlertDescription.internal_error);
-        }
-
-        return new TlsDHConfig(namedGroup);
+        return TlsDHUtils.createNamedDHConfig(context, namedGroup);
     }
 
     public TlsECConfig getECDHConfig() throws IOException
     {
         int minimumCurveBits = TlsECCUtils.getMinimumCurveBits(selectedCipherSuite);
-
         int namedGroup = selectECDH(minimumCurveBits);
-        if (namedGroup < 0)
-        {
-            throw new TlsFatalAlert(AlertDescription.internal_error);
-        }
-
-        return new TlsECConfig(namedGroup);
+        return TlsECCUtils.createNamedECConfig(context, namedGroup);
     }
 
     public void processClientSupplementalData(Vector clientSupplementalData)
